@@ -1,0 +1,5 @@
+{
+  "name": "TileBoi",
+  "description": "A professional procedural noise texture generator. Layer multiple noise types, blend them using advanced compositing, and generate custom AI-powered noise patterns with Gemini. Export seamless textures for 3D workflows.",
+  "requestFramePermissions": []
+}
