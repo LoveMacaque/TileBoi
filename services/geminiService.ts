@@ -1,3 +1,4 @@
+
 import { GoogleGenAI } from "@google/genai";
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -12,15 +13,10 @@ export const generateTextureImage = async (prompt: string): Promise<string> => {
       contents: {
         parts: [
           {
-            text: `Generate a high-quality seamless, tiling texture. 
-            Style: ${prompt}. 
-            Constraints: Square aspect ratio, must be seamless/tileable, top-down view, flat lighting.`
+            // Simplified prompt to avoid confusing the model or triggering specific safety flags
+            text: `Texture: ${prompt}. High quality, seamless, tiling.`
           }
         ]
-      },
-      config: {
-        // Nano banana models don't support imageConfig for size, 
-        // but default aspect ratio is usually square which is good for textures.
       }
     });
 
@@ -37,13 +33,22 @@ export const generateTextureImage = async (prompt: string): Promise<string> => {
     }
 
     if (!base64String) {
-        throw new Error("No image generated.");
+        // Check if there was a text refusal or safety message
+        const textPart = response.candidates?.[0]?.content?.parts?.find(p => p.text);
+        if (textPart) {
+            console.warn("Gemini refused with text:", textPart.text);
+            throw new Error(`Generation blocked: ${textPart.text.substring(0, 100)}...`);
+        }
+        
+        console.warn("Gemini did not return an inlineData part. Full response:", response);
+        throw new Error("No image data returned. The prompt might have triggered safety filters.");
     }
 
     return `data:image/png;base64,${base64String}`;
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Gemini Image Generation Error:", error);
+    // Pass through the error message for the UI
     throw error;
   }
 };

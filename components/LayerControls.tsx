@@ -1,6 +1,7 @@
+
 import React, { useState, useRef } from 'react';
-import { Layer, NoiseType, BlendMode, LayerParams, WarpType } from '../types';
-import { Sliders, RefreshCw, Wand2, Info, Upload, Wind, Waves, Tornado } from 'lucide-react';
+import { Layer, NoiseType, BlendMode, LayerParams, WarpType, MaskType } from '../types';
+import { Sliders, RefreshCw, Wand2, Info, Upload, Wind, Waves, Tornado, Circle, Square, Sun, Grip, Star, Disc } from 'lucide-react';
 import { generateTextureImage } from '../services/geminiService';
 
 interface LayerControlsProps {
@@ -26,14 +27,10 @@ const LayerControls: React.FC<LayerControlsProps> = ({ layer, onUpdate }) => {
     onUpdate(layer.id, { isProcessing: true });
     
     try {
-      // We now generate an image, not code
       const imageUrl = await generateTextureImage(layer.params.prompt);
-      // We set the type to IMAGE implicitly by providing image data, 
-      // but conceptually this layer remains CUSTOM_AI in type until user perhaps changes it.
-      // However, to render it, we use the 'image' param.
       handleParamChange('image', imageUrl);
     } catch (e: any) {
-      setError("Failed to generate texture. Try again.");
+      setError("Failed to generate. " + (e.message || "Try again."));
     } finally {
       setIsGenerating(false);
       onUpdate(layer.id, { isProcessing: false });
@@ -57,11 +54,9 @@ const LayerControls: React.FC<LayerControlsProps> = ({ layer, onUpdate }) => {
     const currentIndex = modes.indexOf(layer.blendMode);
     
     if (e.deltaY > 0) {
-        // Scroll down -> Next item
         const nextIndex = (currentIndex + 1) % modes.length;
         onUpdate(layer.id, { blendMode: modes[nextIndex] });
     } else {
-        // Scroll up -> Prev item
         const prevIndex = (currentIndex - 1 + modes.length) % modes.length;
         onUpdate(layer.id, { blendMode: modes[prevIndex] });
     }
@@ -107,7 +102,6 @@ const LayerControls: React.FC<LayerControlsProps> = ({ layer, onUpdate }) => {
           />
         </div>
         
-        {/* Invert available for all except Warp (logic handled in preview) */}
         {layer.type !== NoiseType.WARP && (
             <div className="flex items-center justify-between">
                 <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Invert</label>
@@ -120,12 +114,13 @@ const LayerControls: React.FC<LayerControlsProps> = ({ layer, onUpdate }) => {
             </div>
         )}
 
-        {/* Warp layers don't use standard scale/contrast/brightness in the same way, but let's keep them if useful or hide */}
         {layer.type !== NoiseType.WARP && (
             <>
                 <div className="space-y-2">
                    <div className="flex justify-between">
-                    <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Scale</label>
+                    <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                        {layer.type === NoiseType.DOTS ? 'Density (Grid Size)' : 'Scale / Frequency'}
+                    </label>
                     <span className="text-xs text-gray-500">{layer.params.scale}x</span>
                    </div>
                   <input 
@@ -163,8 +158,8 @@ const LayerControls: React.FC<LayerControlsProps> = ({ layer, onUpdate }) => {
             </>
         )}
         
-        {/* Seed for procedural noises */}
-        {(layer.type === NoiseType.SIMPLEX || layer.type === NoiseType.PERLIN || layer.type === NoiseType.CELLULAR || layer.type === NoiseType.WARP) && (
+        {/* Seed */}
+        {(['SIMPLEX', 'PERLIN', 'CELLULAR', 'DOTS', 'WARP'].includes(layer.type)) && (
              <div className="flex items-center justify-between pt-2">
                  <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Seed</label>
                  <div className="flex items-center gap-2">
@@ -187,7 +182,7 @@ const LayerControls: React.FC<LayerControlsProps> = ({ layer, onUpdate }) => {
 
       <div className="border-t border-gray-800 my-2"></div>
 
-      {/* Specific Controls */}
+      {/* Type Specific Controls */}
       
       {layer.type === NoiseType.WARP && (
           <div className="space-y-4">
@@ -260,6 +255,95 @@ const LayerControls: React.FC<LayerControlsProps> = ({ layer, onUpdate }) => {
                 className="w-full accent-indigo-500 h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer"
             />
         </div>
+      )}
+
+      {layer.type === NoiseType.DOTS && (
+          <div className="space-y-4">
+             <div className="space-y-2">
+                <div className="flex justify-between">
+                    <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Base Size</label>
+                    <span className="text-xs text-gray-500">{layer.params.dotBaseSize?.toFixed(2)}</span>
+                </div>
+                <input 
+                    type="range" min="0.1" max="1.5" step="0.05"
+                    value={layer.params.dotBaseSize || 0.8}
+                    onChange={(e) => handleParamChange('dotBaseSize', parseFloat(e.target.value))}
+                    className="w-full accent-indigo-500 h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer"
+                />
+             </div>
+             
+             <div className="space-y-2">
+                <div className="flex justify-between">
+                    <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Size Reduction Var.</label>
+                    <span className="text-xs text-gray-500">{layer.params.sizeVariation?.toFixed(2)}</span>
+                </div>
+                <input 
+                    type="range" min="0" max="1" step="0.05"
+                    value={layer.params.sizeVariation || 0}
+                    onChange={(e) => handleParamChange('sizeVariation', parseFloat(e.target.value))}
+                    className="w-full accent-indigo-500 h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer"
+                />
+             </div>
+
+             <div className="space-y-2">
+                <div className="flex justify-between">
+                    <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Masking Threshold</label>
+                    <span className="text-xs text-gray-500">{layer.params.maskThreshold?.toFixed(2)}</span>
+                </div>
+                <input 
+                    type="range" min="0" max="1" step="0.05"
+                    value={layer.params.maskThreshold || 0}
+                    onChange={(e) => handleParamChange('maskThreshold', parseFloat(e.target.value))}
+                    className="w-full accent-indigo-500 h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer"
+                />
+                <p className="text-[10px] text-gray-500">0 = All dots shown, 1 = No dots</p>
+             </div>
+          </div>
+      )}
+
+      {layer.type === NoiseType.MASK && (
+          <div className="space-y-4">
+            <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Mask Shape</label>
+            <select 
+                 value={layer.params.maskType}
+                 onChange={(e) => handleParamChange('maskType', e.target.value)}
+                 className="w-full bg-gray-800 border border-gray-700 text-gray-200 text-xs rounded p-2 focus:ring-2 focus:ring-indigo-500 focus:outline-none mb-2"
+            >
+                <option value={MaskType.GLOW_CIRCLE}>Glow Circle</option>
+                <option value={MaskType.GLOW_SQUARE}>Glow Square</option>
+                <option value={MaskType.STAR_4}>4-Point Star</option>
+                <option value={MaskType.STAR_5}>5-Point Star</option>
+                <option value={MaskType.RINGS}>Radial Rings</option>
+            </select>
+
+            <div className="space-y-2">
+                <div className="flex justify-between">
+                    <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Hardness</label>
+                    <span className="text-xs text-gray-500">{layer.params.maskHardness?.toFixed(2)}</span>
+                </div>
+                <input 
+                    type="range" min="0" max="1" step="0.05"
+                    value={layer.params.maskHardness !== undefined ? layer.params.maskHardness : 0.5}
+                    onChange={(e) => handleParamChange('maskHardness', parseFloat(e.target.value))}
+                    className="w-full accent-indigo-500 h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer"
+                />
+             </div>
+             
+             {layer.params.maskType === MaskType.RINGS && (
+                 <div className="space-y-2">
+                    <div className="flex justify-between">
+                        <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Ring Count</label>
+                        <span className="text-xs text-gray-500">{layer.params.ringCount}</span>
+                    </div>
+                    <input 
+                        type="range" min="1" max="20" step="1"
+                        value={layer.params.ringCount || 5}
+                        onChange={(e) => handleParamChange('ringCount', parseInt(e.target.value))}
+                        className="w-full accent-indigo-500 h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer"
+                    />
+                 </div>
+             )}
+          </div>
       )}
 
       {layer.type === NoiseType.IMAGE && (

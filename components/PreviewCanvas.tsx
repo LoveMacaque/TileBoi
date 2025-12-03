@@ -1,14 +1,16 @@
+
 import React, { useEffect, useRef, useState } from 'react';
-import { Layer, NoiseType, WarpType } from '../types';
-import { initNoise, generateSimplexTiled, generateCellularTiled, generateWhiteNoise, getRawSimplexTiled } from '../utils/noise';
+import { Layer, NoiseType, WarpType, MaskType } from '../types';
+import { initNoise, generateSimplexTiled, generateCellularTiled, generateGrain, getRawSimplexTiled, generateDotsTiled, generateStripesTiled, generateMaskTiled } from '../utils/noise';
 import { Download, Box, Grid, Grid3x3 } from 'lucide-react';
 import ThreeViewer from './ThreeViewer';
 
 interface PreviewCanvasProps {
   layers: Layer[];
+  projectTitle: string;
 }
 
-const PreviewCanvas: React.FC<PreviewCanvasProps> = ({ layers }) => {
+const PreviewCanvas: React.FC<PreviewCanvasProps> = ({ layers, projectTitle }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const imageCache = useRef<Record<string, HTMLImageElement>>({});
   const [resolution, setResolution] = useState(512);
@@ -105,7 +107,9 @@ const PreviewCanvas: React.FC<PreviewCanvasProps> = ({ layers }) => {
             const dst = outputImageData.data;
 
             // Warp parameters
-            const str = (layer.params.warpStrength || 0.5) * 100; // Multiplier for pixel offset
+            // Fix: Check if undefined, allowing 0 to be a valid value
+            const strValue = layer.params.warpStrength !== undefined ? layer.params.warpStrength : 0.5;
+            const str = strValue * 100;
             const scale = layer.params.scale || 1.0;
             const type = layer.params.warpType || WarpType.TURBULENCE;
 
@@ -119,7 +123,6 @@ const PreviewCanvas: React.FC<PreviewCanvasProps> = ({ layers }) => {
                     const normalizedY = y / h;
 
                     if (type === WarpType.TURBULENCE) {
-                        // Use noise derivatives or just two different seeds for X and Y
                         const nX = getRawSimplexTiled(x + 123.4, y, w, h, scale);
                         const nY = getRawSimplexTiled(x, y + 567.8, w, h, scale);
                         offsetX = nX * str;
@@ -133,7 +136,6 @@ const PreviewCanvas: React.FC<PreviewCanvasProps> = ({ layers }) => {
                         offsetX = Math.cos(angle + swirl) * str * dist;
                         offsetY = Math.sin(angle + swirl) * str * dist;
                     } else if (type === WarpType.FLOW) {
-                        // Diagonal flow based on noise
                         const n = getRawSimplexTiled(x, y, w, h, scale);
                         offsetX = Math.cos(n * Math.PI) * str;
                         offsetY = Math.sin(n * Math.PI) * str;
@@ -165,13 +167,8 @@ const PreviewCanvas: React.FC<PreviewCanvasProps> = ({ layers }) => {
             const tempCtx = tempCanvas.getContext('2d');
             tempCtx?.putImageData(outputImageData, 0, 0);
             
-            // Draw result - WARP typically replaces, or blends if opacity < 1
-            // We'll assume it modifies the buffer, but respects layer opacity
-            // If opacity is 0.5, we want 50% warped, 50% original.
             ctx.save();
             ctx.globalAlpha = layer.opacity;
-            // We need to clear if we are replacing, but standard blend modes work on top.
-            // But since we sampled the *background*, simply drawing "Normal" over it works for mix.
             ctx.globalCompositeOperation = 'source-over'; 
             ctx.drawImage(tempCanvas, 0, 0);
             ctx.restore();
@@ -197,8 +194,31 @@ const PreviewCanvas: React.FC<PreviewCanvasProps> = ({ layers }) => {
                 case NoiseType.CELLULAR:
                     value = generateCellularTiled(x, y, w, h, layer.params.scale, layer.params.jitter || 1, layer.params.seed);
                     break;
-                case NoiseType.WHITE:
-                    value = generateWhiteNoise();
+                case NoiseType.DOTS:
+                    value = generateDotsTiled(
+                        x, y, w, h, 
+                        layer.params.scale, 
+                        layer.params.dotBaseSize || 0.8, 
+                        layer.params.sizeVariation || 0,
+                        layer.params.maskThreshold || 0,
+                        layer.params.seed,
+                        layer.params.jitter !== undefined ? layer.params.jitter : 1.0
+                    );
+                    break;
+                case NoiseType.STRIPES:
+                    value = generateStripesTiled(x, y, w, h, layer.params.scale);
+                    break;
+                case NoiseType.MASK:
+                    value = generateMaskTiled(
+                        x, y, w, h, 
+                        layer.params.scale, 
+                        layer.params.maskType || MaskType.GLOW_CIRCLE,
+                        layer.params.maskHardness !== undefined ? layer.params.maskHardness : 0.5,
+                        layer.params.ringCount || 5
+                    );
+                    break;
+                case NoiseType.GRAIN:
+                    value = generateGrain();
                     break;
             }
 
@@ -234,11 +254,13 @@ const PreviewCanvas: React.FC<PreviewCanvasProps> = ({ layers }) => {
       displayCtx.clearRect(0, 0, w, h);
 
       if (viewMode === 'Tiled') {
-          const tileW = w / 3;
-          const tileH = h / 3;
-          // Draw 3x3 grid without stroke lines to avoid border artifacts
+          // Use ceil to ensure overlap (fix seam lines)
+          const tileW = Math.ceil(w / 3);
+          const tileH = Math.ceil(h / 3);
+          
           for (let y = 0; y < 3; y++) {
               for (let x = 0; x < 3; x++) {
+                  // Draw at integer coordinates
                   displayCtx.drawImage(compositeCanvas, x * tileW, y * tileH, tileW, tileH);
               }
           }
@@ -260,7 +282,9 @@ const PreviewCanvas: React.FC<PreviewCanvasProps> = ({ layers }) => {
         return;
     }
     const link = document.createElement('a');
-    link.download = `tileboi-texture-${Date.now()}.png`;
+    // Sanitize title for filename
+    const filename = projectTitle.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+    link.download = `${filename || 'texture'}.png`;
     link.href = canvasRef.current.toDataURL('image/png');
     link.click();
   };
